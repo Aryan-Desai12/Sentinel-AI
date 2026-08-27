@@ -1,0 +1,4 @@
+node_id: node-001
+api_key: change-me
+gateway_url: http://localhost:8080
+interval_seconds: 10

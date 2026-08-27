@@ -1,0 +1,21 @@
+go.mod
+go.sum
+.env
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Go binaries
+bin/
+*.exe
+
+# Logs
+*.log
+
+# OS/editor files
+.DS_Store
+.vscode/
+.idea/
+config.yaml
