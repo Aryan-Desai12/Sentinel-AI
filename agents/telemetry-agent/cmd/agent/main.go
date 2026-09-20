@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Aryan-Desai12/sentinel-ai/agents/telemetry-agent/internal/agent"
 	"github.com/Aryan-Desai12/sentinel-ai/agents/telemetry-agent/internal/config"
@@ -26,7 +27,9 @@ func main() {
 
 	telemetryAgent := agent.New(
 		cfg.NodeID,
-		cfg.IntervalSeconds,
+		time.Duration(cfg.IntervalSeconds)*time.Second,
+		cfg.GatewayURL,
+		cfg.APIKey,
 	)
 
 	log.Printf(

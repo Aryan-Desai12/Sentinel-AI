@@ -155,3 +155,32 @@ func TestBufferCapacity(t *testing.T) {
 		t.Fatal("expected third Add() to fail when buffer is full")
 	}
 }
+
+func TestBufferFull(t *testing.T) {
+	b := New(2)
+
+	event1 := model.Telemetry{NodeID: "node-1"}
+	event2 := model.Telemetry{NodeID: "node-2"}
+	event3 := model.Telemetry{NodeID: "node-3"}
+
+	if err := b.Add(event1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := b.Add(event2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := b.Add(event3); err == nil {
+		t.Fatal("expected buffer-full error, got nil")
+	}
+
+	event, ok := b.Peek()
+	if !ok {
+		t.Fatal("expected event in buffer")
+	}
+
+	if event.NodeID != "node-1" {
+		t.Fatalf("expected node-1, got %s", event.NodeID)
+	}
+}
