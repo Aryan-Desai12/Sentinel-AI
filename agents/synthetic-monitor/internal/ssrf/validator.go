@@ -20,11 +20,17 @@ func NewValidator(resolver Resolver) *Validator {
 }
 
 var blockedNetworks = mustParseNetworks([]string{
-	"127.0.0.0/8",
-	"169.254.0.0/16",
-	"10.0.0.0/8",
-	"172.16.0.0/12",
-	"192.168.0.0/16",
+	// IPv4
+	"127.0.0.0/8",    // loopback
+	"169.254.0.0/16",  // link-local / cloud metadata
+	"10.0.0.0/8",      // private
+	"172.16.0.0/12",   // private
+	"192.168.0.0/16",  // private
+
+	// IPv6
+	"::1/128",     // loopback
+	"fe80::/10",   // link-local
+	"fc00::/7",    // unique-local/private
 })
 
 type Rejection struct {
@@ -58,6 +64,14 @@ func mustParseNetworks(networks []string) []*net.IPNet {
 }
 
 func blockedRule(ip net.IP) (string, bool) {
+	if ipv4 := ip.To4(); ipv4 != nil {
+		for _, network := range blockedNetworks {
+			if network.Contains(ipv4) {
+				return network.String(), true
+			}
+		}
+	}
+
 	for _, network := range blockedNetworks {
 		if network.Contains(ip) {
 			return network.String(), true

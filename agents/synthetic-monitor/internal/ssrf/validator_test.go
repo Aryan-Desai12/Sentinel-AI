@@ -93,6 +93,30 @@ func TestValidateURL_RejectsBlockedIPs(t *testing.T) {
 			name: "cloud metadata",
 			ip:   "169.254.169.254",
 		},
+		{
+			name: "ipv6 loopback",
+			ip:   "::1",
+		},
+		{
+			name: "ipv6 link local",
+			ip:   "fe80::1",
+		},
+		{
+			name: "ipv6 unique local",
+			ip:   "fc00::1",
+		},
+		{
+			name: "ipv6 unique local fd",
+			ip:   "fd12:3456:789a::1",
+		},
+		{
+			name: "ipv4 mapped ipv6 loopback",
+			ip:   "::ffff:127.0.0.1",
+		},
+		{
+			name: "ipv4 mapped ipv6 private",
+			ip:   "::ffff:10.0.0.1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -189,5 +213,28 @@ func TestResolveAndValidate_ReturnsValidatedIPs(t *testing.T) {
 
 	if !ips[1].Equal(net.ParseIP("93.184.216.35")) {
 		t.Fatalf("unexpected second IP: %s", ips[1])
+	}
+}
+
+//make sure we're not accidentally blocking all IPv6 addresses
+func TestValidateURL_AllowsPublicIPv6(t *testing.T) {
+	resolver := fakeResolver{
+		ips: []net.IP{
+			net.ParseIP("2001:4860:4860::8888"),
+		},
+	}
+
+	validator := NewValidator(resolver)
+
+	err := validator.ValidateURL(
+		context.Background(),
+		"https://example.com",
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"expected public IPv6 to be allowed, got: %v",
+			err,
+		)
 	}
 }
