@@ -4,16 +4,17 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
-	"net/http"
 
 	"sentinel-ai/agents/synthetic-monitor/internal/checker"
 	"sentinel-ai/agents/synthetic-monitor/internal/config"
 	"sentinel-ai/agents/synthetic-monitor/internal/delivery"
+	"sentinel-ai/agents/synthetic-monitor/internal/health"
 	"sentinel-ai/agents/synthetic-monitor/internal/model"
 	"sentinel-ai/agents/synthetic-monitor/internal/scheduler"
 	"sentinel-ai/agents/synthetic-monitor/internal/transport"
@@ -32,9 +33,8 @@ func main() {
 
 	slog.SetDefault(logger)
 
-	
 	// Context / graceful shutdown
-	
+
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -42,7 +42,7 @@ func main() {
 	)
 	defer stop()
 
-		// Load configuration
+	// Load configuration
 
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
@@ -56,7 +56,7 @@ func main() {
 	}
 
 	// Gateway API key
-	
+
 	apiKey := os.Getenv("SENTINEL_GATEWAY_API_KEY")
 
 	if apiKey == "" {
@@ -73,24 +73,24 @@ func main() {
 
 	resolver := net.DefaultResolver
 
-// SSRF-aware client for checking configured targets.
-checkerHTTPClient := transport.NewClient(resolver)
+	// SSRF-aware client for checking configured targets.
+	checkerHTTPClient := transport.NewClient(resolver)
 
-// Normal HTTP client for communicating with our Gateway.
-gatewayHTTPClient := &http.Client{}
+	// Normal HTTP client for communicating with our Gateway.
+	gatewayHTTPClient := &http.Client{}
 
-deliveryClient := delivery.NewClient(
-	gatewayHTTPClient,
-	cfg.Delivery.GatewayURL,
-	apiKey,
-)
+	deliveryClient := delivery.NewClient(
+		gatewayHTTPClient,
+		cfg.Delivery.GatewayURL,
+		apiKey,
+	)
 	// Delivery buffer
 
 	buffer := delivery.NewBuffer(
 		cfg.Delivery.BufferCapacity,
 		time.Duration(cfg.Delivery.BufferTTLSeconds)*time.Second,
 	)
-	
+
 	// Delivery workers
 
 	deliveryWorker := delivery.NewWorker(
@@ -125,7 +125,6 @@ deliveryClient := delivery.NewClient(
 	}
 
 	// Check worker pool
-
 
 	checkPool := worker.New(
 		cfg.Check.Workers,
@@ -168,6 +167,43 @@ deliveryClient := delivery.NewClient(
 		"delivery_workers", cfg.Delivery.Workers,
 	)
 
+	// --------------------------------------------------
+	// Health server
+	// --------------------------------------------------
+
+	healthHandler := health.NewHandler(len(cfg.Targets))
+
+	healthMux := http.NewServeMux()
+	healthMux.Handle("/health", healthHandler)
+
+	healthServer := &http.Server{
+		Addr:    ":8081",
+		Handler: healthMux,
+	}
+
+	var healthWG sync.WaitGroup
+
+	healthWG.Add(1)
+
+	go func() {
+		defer healthWG.Done()
+
+		slog.Info(
+			"health server started",
+			"service", "synthetic-monitor",
+			"address", ":8081",
+		)
+
+		if err := healthServer.ListenAndServe(); err != nil &&
+			err != http.ErrServerClosed {
+			slog.Error(
+				"health server failed",
+				"service", "synthetic-monitor",
+				"error", err,
+			)
+		}
+	}()
+
 	// Wait for shutdown signal
 
 	<-ctx.Done()
@@ -178,7 +214,7 @@ deliveryClient := delivery.NewClient(
 	)
 
 	// Shutdown
-	
+
 	// Stop schedulers and check workers first.
 	schedulerWG.Wait()
 	checkWG.Wait()
@@ -187,10 +223,27 @@ deliveryClient := delivery.NewClient(
 	// and stop after cancellation.
 	deliveryWG.Wait()
 
+	shutdownCtx, cancel := context.WithTimeout(
+		context.Background(),
+		5*time.Second,
+	)
+	defer cancel()
+
+	if err := healthServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error(
+			"health server shutdown failed",
+			"service", "synthetic-monitor",
+			"error", err,
+		)
+	}
+
+	healthWG.Wait()
+
 	slog.Info(
 		"synthetic monitor stopped",
 		"service", "synthetic-monitor",
 	)
+
 }
 
 //                     config.yaml

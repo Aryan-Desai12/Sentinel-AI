@@ -65,9 +65,11 @@ func (b *Buffer) Enqueue(event model.SyntheticCheckEvent) {
 	}
 }
 
-func (b *Buffer) Dequeue(
-	ctx context.Context,
-) (model.SyntheticCheckEvent, bool) {
+func (b *Buffer) Dequeue(ctx context.Context) (
+	model.SyntheticCheckEvent,
+	time.Time,
+	bool,
+) {
 	for {
 		b.mu.Lock()
 
@@ -91,7 +93,7 @@ func (b *Buffer) Dequeue(
 				continue
 			}
 
-			return item.event, true
+			return item.event, item.queuedAt, true
 		}
 
 		b.mu.Unlock()
@@ -99,9 +101,13 @@ func (b *Buffer) Dequeue(
 		select {
 		case <-b.notify:
 		case <-ctx.Done():
-			return model.SyntheticCheckEvent{}, false
+			return model.SyntheticCheckEvent{}, time.Time{}, false
 		}
 	}
+}
+
+func (b *Buffer) IsExpired(queuedAt time.Time) bool {
+	return time.Since(queuedAt) > b.ttl
 }
 
 // Synthetic Check

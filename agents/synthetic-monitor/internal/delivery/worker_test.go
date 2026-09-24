@@ -166,3 +166,74 @@ func TestWorker_RetriesTemporaryFailure(t *testing.T) {
 		)
 	}
 }
+
+func TestWorker_DropsEventWhenTTLExpiresDuringRetry(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		attempts int
+	)
+
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			attempts++
+			mu.Unlock()
+
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}),
+	)
+	defer server.Close()
+
+	// Event becomes stale after 50ms.
+	buffer := NewBuffer(10, 50*time.Millisecond)
+
+	event := testSyntheticEvent()
+	buffer.Enqueue(event)
+
+	client := NewClient(
+		server.Client(),
+		server.URL,
+		"test-api-key",
+	)
+
+	worker := NewWorker(buffer, client)
+
+	// Simulate the retry delay without actually waiting 1 second.
+	// Sleep long enough for the event TTL to expire.
+	worker.sleepFunc = func(
+		ctx context.Context,
+		delay time.Duration,
+	) bool {
+		time.Sleep(60 * time.Millisecond)
+		return true
+	}
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+	defer cancel()
+
+	done := make(chan struct{})
+
+	go func() {
+		worker.Run(ctx)
+		close(done)
+	}()
+
+	// Wait until the worker notices that the event expired.
+	time.Sleep(100 * time.Millisecond)
+
+	cancel()
+	<-done
+
+	mu.Lock()
+	gotAttempts := attempts
+	mu.Unlock()
+
+	if gotAttempts != 1 {
+		t.Fatalf(
+			"expected exactly 1 delivery attempt before TTL expiry, got %d",
+			gotAttempts,
+		)
+	}
+}

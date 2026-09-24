@@ -20,7 +20,7 @@ func TestBuffer_EnqueueAndDequeue(t *testing.T) {
 
 	ctx := context.Background()
 
-	got, ok := buffer.Dequeue(ctx)
+	got, _, ok := buffer.Dequeue(ctx)
 	if !ok {
 		t.Fatal("expected event to be dequeued")
 	}
@@ -58,7 +58,7 @@ func TestBuffer_DropsOldestWhenFull(t *testing.T) {
 
 	ctx := context.Background()
 
-	got, ok := buffer.Dequeue(ctx)
+	got, _, ok := buffer.Dequeue(ctx)
 	if !ok {
 		t.Fatal("expected event")
 	}
@@ -70,7 +70,7 @@ func TestBuffer_DropsOldestWhenFull(t *testing.T) {
 		)
 	}
 
-	got, ok = buffer.Dequeue(ctx)
+	got, _, ok = buffer.Dequeue(ctx)
 	if !ok {
 		t.Fatal("expected event")
 	}
@@ -101,7 +101,7 @@ func TestBuffer_ExpiresOldEvents(t *testing.T) {
 	)
 	defer cancel()
 
-	_, ok := buffer.Dequeue(ctx)
+	_, _, ok := buffer.Dequeue(ctx)
 
 	if ok {
 		t.Fatal("expected expired event to be discarded")
@@ -114,7 +114,7 @@ func TestBuffer_DequeueStopsOnContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, ok := buffer.Dequeue(ctx)
+	_, _, ok := buffer.Dequeue(ctx)
 
 	if ok {
 		t.Fatal("expected dequeue to stop after context cancellation")
